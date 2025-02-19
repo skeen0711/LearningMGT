@@ -1,0 +1,19 @@
+lumber_lms/
+│
+├── app/
+│   ├── __init__.py
+│   ├── main.py
+│   ├── models.py
+│   ├── schemas.py
+│   ├── crud.py
+│   └── routes/
+│       ├── __init__.py
+│       ├── users.py
+│       └── courses.py
+│
+├── database.py
+├── config.py
+├── tests/
+│   └── test_main.py
+├── requirements.txt
+└── README.md
