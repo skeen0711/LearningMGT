@@ -33,6 +33,11 @@ def login():
         return "Invalid credentials"
     return render_template('login.html')
 
+@app.route('/logout')
+def logout():
+    session.pop('user_id', None)
+    session.pop('is_admin', None)
+    return redirect(url_for('login'))
 
 @app.route('/user_dashboard')
 def user_dashboard():
