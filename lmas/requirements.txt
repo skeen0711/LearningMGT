@@ -1,4 +1,6 @@
-fastapi==0.85.0
-uvicorn==0.18.3
-sqlalchemy==1.4.39
-pydantic==1.9.1
+# Core dependencies for running the LMAS
+Flask==3.0.3        # Web framework for the application
+bcrypt==4.1.2       # Password hashing for secure authentication
+
+
+pytest==8.0.2       # Testing framework (assuming tests/test_main.py uses pytest)

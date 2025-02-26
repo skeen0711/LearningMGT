@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <h1>User Dashboard</h1>
+    <h2>Your Courses</h2>
+    <table>
+        <tr><th>Course</th><th>Due Date</th><th>Status</th><th>Score</th></tr>
+        {% for assignment in assignments %}
+            <tr>
+                <td><a href="{{ url_for('launch_course', filepath=assignment[1]) }}">{{ assignment[0] }}</a></td>
+                <td>{{ assignment[2] }}</td>
+                <td>{{ 'Completed' if assignment[4] else 'Pending' }}</td>
+                <td>{{ assignment[3] if assignment[3] else 'N/A' }}</td>
+            </tr>
+        {% endfor %}
+    </table>
+</body>
+</html>
