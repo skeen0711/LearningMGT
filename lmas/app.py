@@ -47,14 +47,13 @@ def user_dashboard():
     return render_template('user_dashboard.html', assignments=assignments)
 
 
-@app.route('/launch_course/</Applications/eXeLearning.app>')
+@app.route('/launch_course/<path:filepath>')
 def launch_course(filepath):
     if 'user_id' not in session:
         return redirect(url_for('login'))
     start_time = datetime.now().isoformat()
-    subprocess.Popen(['exelearning', os.path.join(COURSE_DIR, filepath)])  # Adjust path/command as needed
-    # Placeholder: In practice, you'd need a way to get end_time, score, and passed from eXelearning
-    # For now, simulate completion manually or extend later
+    subprocess.Popen(['open', '-a', '/Applications/eXeLearning.app', os.path.join(COURSE_DIR, filepath)])
+    # Placeholder: Extend later for progress tracking
     return redirect(url_for('user_dashboard'))
 
 
