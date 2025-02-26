@@ -1,16 +1,33 @@
-from flask import Flask, render_template, request, redirect, url_for, session
+from flask import Flask, render_template, request, redirect, url_for, session, send_from_directory, jsonify
 import bcrypt
-import subprocess
-from datetime import datetime
+import zipfile
 import os
+import xml.etree.ElementTree as ET
+from datetime import datetime
 import database
 
 app = Flask(__name__)
 app.secret_key = 'your-secret-key'  # Change this to a secure key
 COURSE_DIR = os.path.join(os.getcwd(), 'courses')
+CONTENT_DIR = os.path.join(os.getcwd(), 'content')
 
 # Initialize database
 database.init_db()
+
+
+def get_scorm_entry_point(extract_path):
+    """Parse imsmanifest.xml to find the entry point HTML file."""
+    manifest_path = os.path.join(extract_path, 'imsmanifest.xml')
+    if not os.path.exists(manifest_path):
+        return 'index.html'  # Fallback
+    tree = ET.parse(manifest_path)
+    root = tree.getroot()
+    # SCORM 1.2: Look for the first resource with type 'webcontent'
+    for resource in root.findall('.//{http://www.imsglobal.org/xsd/imscp_v1p1}resource'):
+        if resource.get('type') == 'webcontent':
+            href = resource.get('href', 'index.html')
+            return href
+    return 'index.html'  # Default if not found
 
 
 @app.route('/')
@@ -33,13 +50,15 @@ def login():
         return "Invalid credentials"
     return render_template('login.html')
 
+
 @app.route('/logout')
 def logout():
     session.pop('user_id', None)
     session.pop('is_admin', None)
     return redirect(url_for('login'))
 
-@app.route('/user_dashboard')
+
+@app.route('/user_dashboard', methods=['GET', 'POST'])
 def user_dashboard():
     if 'user_id' not in session or session.get('is_admin'):
         return redirect(url_for('login'))
@@ -47,14 +66,68 @@ def user_dashboard():
     return render_template('user_dashboard.html', assignments=assignments)
 
 
+## RevStart -- Enhanced SCORM launch with manifest parsing
 @app.route('/launch_course/<path:filepath>')
 def launch_course(filepath):
     if 'user_id' not in session:
         return redirect(url_for('login'))
-    start_time = datetime.now().isoformat()
-    subprocess.Popen(['open', '-a', '/Applications/eXeLearning.app', os.path.join(COURSE_DIR, filepath)])
-    # Placeholder: Extend later for progress tracking
-    return redirect(url_for('user_dashboard'))
+
+    zip_path = os.path.join(COURSE_DIR, filepath)
+    extract_path = os.path.join(CONTENT_DIR, filepath.replace('.zip', ''))
+
+    if not os.path.exists(extract_path):
+        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+            zip_ref.extractall(extract_path)
+
+    entry_point = get_scorm_entry_point(extract_path)
+    if os.path.exists(os.path.join(extract_path, entry_point)):
+        session['current_course'] = filepath
+        return redirect(url_for('serve_content', filepath=filepath.replace('.zip', ''), filename=entry_point))
+    return "Course entry point not found", 404
+
+
+## RevEnd
+
+@app.route('/content/<path:filepath>/<filename>')
+def serve_content(filepath, filename):
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    return send_from_directory(os.path.join(CONTENT_DIR, filepath), filename)
+
+
+@app.route('/scorm_api', methods=['POST'])
+def scorm_api():
+    if 'user_id' not in session or 'current_course' not in session:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    data = request.get_json()
+    command = data.get('command')
+    key = data.get('key')
+    value = data.get('value')
+
+    if command == 'LMSInitialize':
+        session['scorm_data'] = {'start_time': datetime.now().isoformat()}
+        return jsonify({"success": True})
+    elif command == 'LMSSetValue':
+        session['scorm_data'][key] = value
+        return jsonify({"success": True})
+    elif command == 'LMSFinish':
+        scorm_data = session.get('scorm_data', {})
+        course_filepath = session['current_course']
+        course = next((a for a in database.get_assignments(session['user_id']) if a[1] == course_filepath), None)
+        if course and 'cmi.core.score.raw' in scorm_data:
+            database.save_progress(
+                session['user_id'],
+                course_filepath,
+                scorm_data.get('start_time', datetime.now().isoformat()),
+                datetime.now().isoformat(),
+                float(scorm_data.get('cmi.core.score.raw', 0)),
+                1 if scorm_data.get('cmi.core.lesson_status', 'incomplete') in ['completed', 'passed'] else 0
+            )
+        session.pop('current_course', None)
+        session.pop('scorm_data', None)
+        return jsonify({"success": True})
+    return jsonify({"error": "Invalid command"}), 400
 
 
 @app.route('/admin_dashboard', methods=['GET', 'POST'])
@@ -70,7 +143,7 @@ def admin_dashboard():
         elif 'add_course' in request.form:
             name = request.form['course_name']
             file = request.files['course_file']
-            if file and file.filename.endswith('.elp'):
+            if file and file.filename.endswith('.zip'):
                 filepath = os.path.join(COURSE_DIR, file.filename)
                 file.save(filepath)
                 database.add_course(name, file.filename)
@@ -82,14 +155,15 @@ def admin_dashboard():
 
     users = database.get_all_users()
     courses = database.get_all_courses()
-    assignments = database.get_assignments(session['user_id'])  # For display, adjust as needed
+    assignments = database.get_assignments(session['user_id'])
     return render_template('admin_dashboard.html', users=users, courses=courses, assignments=assignments)
 
 
 if __name__ == '__main__':
     if not os.path.exists(COURSE_DIR):
         os.makedirs(COURSE_DIR)
-    # Create an admin user (for initial setup)
+    if not os.path.exists(CONTENT_DIR):
+        os.makedirs(CONTENT_DIR)
     hashed_pw = bcrypt.hashpw('admin123'.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
     if not database.get_user('admin'):
         database.add_user('admin', hashed_pw, is_admin=1)
