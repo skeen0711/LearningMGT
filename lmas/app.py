@@ -82,8 +82,6 @@ def launch_course(filepath):
         return redirect(url_for('serve_content', filepath=filepath.replace('.zip', ''), filename=entry_point))
     return "Course entry point not found", 404
 
-
-## RevStart -- Inject scorm_api.js at top of body for immediate execution
 @app.route('/content/<path:filepath>/<filename>')
 def serve_content(filepath, filename):
     if 'user_id' not in session:
@@ -91,9 +89,9 @@ def serve_content(filepath, filename):
     if filename.endswith('.html'):
         with open(os.path.join(CONTENT_DIR, filepath, filename), 'r') as f:
             content = f.read()
-        script_tag = '<script src="/static/scorm_api.js"></script>'
+        # Use synchronous script tag at top of body
+        script_tag = '<script src="/static/scorm_api.js" defer></script>'
         if '<body' in content:
-            # Inject at the start of <body> to ensure it loads before other scripts
             body_start = content.index('<body') + content[content.index('<body'):].index('>') + 1
             content = content[:body_start] + script_tag + content[body_start:]
         else:
@@ -102,8 +100,6 @@ def serve_content(filepath, filename):
         return content, 200, {'Content-Type': 'text/html'}
     return send_from_directory(os.path.join(CONTENT_DIR, filepath), filename)
 
-
-## RevEnd
 
 @app.route('/scorm_api', methods=['POST'])
 def scorm_api():
