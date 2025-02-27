@@ -39,17 +39,18 @@
 
     <h2>Progress</h2>
     <table>
-        <tr><th>Course</th><th>Attempt ID</th><th>Correct</th><th>Incorrect</th><th>Score</th><th>Passed</th><th>Start Time</th><th>End Time</th></tr>
+        <tr><th>User</th><th>Course</th><th>Attempt ID</th><th>Correct</th><th>Incorrect</th><th>Score</th><th>Passed</th><th>Start Time</th><th>End Time</th></tr>
         {% for attempt in attempts %}
             <tr>
-                <td>{{ attempt[2] }}</td> <!-- course_id -->
-                <td>{{ attempt[0] }}</td> <!-- attempt_id -->
-                <td>{{ attempt[3] }}</td> <!-- correct_responses -->
-                <td>{{ attempt[4] }}</td> <!-- incorrect_responses -->
-                <td>{{ attempt[8] }}</td> <!-- score -->
-                <td>{{ 'Yes' if attempt[5] else 'No' }}</td> <!-- passed -->
-                <td>{{ attempt[6] }}</td> <!-- start_time -->
-                <td>{{ attempt[7] }}</td> <!-- end_time -->
+                <td>{{ attempt[0] }}</td> <!-- username -->
+                <td>{{ attempt[3] }}</td> <!-- course_id -->
+                <td>{{ attempt[1] }}</td> <!-- attempt_id -->
+                <td>{{ attempt[4] }}</td> <!-- correct_responses -->
+                <td>{{ attempt[5] }}</td> <!-- incorrect_responses -->
+                <td>{{ attempt[9] }}</td> <!-- score -->
+                <td>{{ 'Yes' if attempt[6] else 'No' }}</td> <!-- passed -->
+                <td>{{ attempt[7] }}</td> <!-- start_time -->
+                <td>{{ attempt[8] }}</td> <!-- end_time -->
             </tr>
         {% endfor %}
     </table>

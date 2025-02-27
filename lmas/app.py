@@ -152,19 +152,38 @@ def scorm_api():
             session['scorm_data']['interactions'][key] = value
         else:
             session['scorm_data'][key] = value
-        session.modified = True  # Ensure session persists
+        session.modified = True
         return jsonify({"success": True})
     elif command == 'LMSFinish':
         scorm_data = session.get('scorm_data', {})
         course_filepath = session['current_course']
-        course = next((a for a in database.get_assignments(session['user_id']) if a[1] == course_filepath), None)
+        # Use filepath directly instead of course tuple
+        assignments = database.get_assignments(session['user_id'])
+        course = next((a for a in assignments if a[1] == course_filepath), None)  # a[1] is filepath
         if course:
             score = float(scorm_data.get('cmi.core.score.raw', 0))
             status = scorm_data.get('cmi.core.lesson_status', 'incomplete')
-            passed = 1 if status in ['completed', 'passed'] else 0
+            passed = 1 if status in ['completed', 'passed'] and score >= 80 else 0
+
+            # Count all interaction results explicitly
             interactions = scorm_data.get('interactions', {})
-            correct_responses = sum(1 for k, v in interactions.items() if k.endswith('.result') and v == 'correct')
-            incorrect_responses = sum(1 for k, v in interactions.items() if k.endswith('.result') and v == 'wrong')
+            correct_responses = 0
+            incorrect_responses = 0
+            for i in range(10):  # 10 questions
+                result_key = f'cmi.interactions.{i}.result'
+                resp_key = f'cmi.interactions.{i}.student_response'
+                corr_key = f'cmi.interactions.{i}.correct_responses.0.pattern'
+                if result_key in interactions:
+                    if interactions[result_key] == 'correct':
+                        correct_responses += 1
+                    elif interactions[result_key] == 'wrong':
+                        incorrect_responses += 1
+                # Fallback: Compare student_response to correct_response if result is missing
+                elif resp_key in interactions and corr_key in interactions:
+                    if interactions[resp_key] == interactions[corr_key]:
+                        correct_responses += 1
+                    else:
+                        incorrect_responses += 1
 
             print(
                 f"Saving attempt: user={session['user_id']}, course={course_filepath}, score={score}, status={status}, correct={correct_responses}, incorrect={incorrect_responses}")
@@ -179,12 +198,11 @@ def scorm_api():
                 score
             )
         else:
-            print(f"Attempt not saved: course={course}")
+            print(f"Attempt not saved: course not found for filepath={course_filepath}, assignments={assignments}")
         session.pop('current_course', None)
         session.pop('scorm_data', None)
         return jsonify({"success": True})
     return jsonify({"error": "Invalid command"}), 400
-
 
 @app.route('/nevow_liveOutput', methods=['GET', 'POST'])
 def nevow_live_output():
@@ -244,15 +262,14 @@ def admin_dashboard():
     users = database.get_all_users()
     courses = database.get_all_courses()
     assignments = database.get_assignments(session['user_id'])
-    # Fetch attempts for all users
+    # Fetch attempts with user info
     all_attempts = []
+    user_dict = {user[0]: user[1] for user in users}  # Map user_id to username
     for user in users:
         user_attempts = database.get_attempts(user[0])
         for attempt in user_attempts:
-            all_attempts.append(attempt)
-    return render_template('admin_dashboard.html', users=users, courses=courses, assignments=assignments,
-                           attempts=all_attempts)
-
+            all_attempts.append((user_dict[user[0]],) + attempt)  # Prepend username
+    return render_template('admin_dashboard.html', users=users, courses=courses, assignments=assignments, attempts=all_attempts)
 
 if __name__ == '__main__':
     if not os.path.exists(COURSE_DIR):

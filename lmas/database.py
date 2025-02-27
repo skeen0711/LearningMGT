@@ -71,9 +71,10 @@ def get_assignments(user_id):
     c = conn.cursor()
     c.execute('''SELECT c.name, c.filepath, a.due_date, p.score, p.passed 
                  FROM assignments a 
-                 LEFT JOIN courses c ON a.course_id = c.id 
-                 LEFT JOIN attempts p ON a.user_id = p.user_id AND a.course_id = p.course_id 
-                 WHERE a.user_id = ?''', (user_id,))
+                 JOIN courses c ON a.course_id = c.id 
+                 LEFT JOIN attempts p ON a.user_id = p.user_id AND c.filepath = p.course_id 
+                 WHERE a.user_id = ? 
+                 ORDER BY p.end_time DESC LIMIT 1''', (user_id,))
     assignments = c.fetchall()
     conn.close()
     return assignments

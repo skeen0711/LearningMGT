@@ -4,19 +4,18 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
-    ## RevStart -- Added logout link
     <a href="{{ url_for('logout') }}">Logout</a>
-    ## RevEnd
     <h1>User Dashboard</h1>
-    <h2>Your Courses</h2>
+    <h2>Your Assignments</h2>
     <table>
-        <tr><th>Course</th><th>Due Date</th><th>Status</th><th>Score</th></tr>
+        <tr><th>Course</th><th>Due Date</th><th>Score</th><th>Status</th><th>Action</th></tr>
         {% for assignment in assignments %}
             <tr>
-                <td><a href="{{ url_for('launch_course', filepath=assignment[1]) }}">{{ assignment[0] }}</a></td>
-                <td>{{ assignment[2] }}</td>
-                <td>{{ 'Completed' if assignment[4] else 'Pending' }}</td>
-                <td>{{ assignment[3] if assignment[3] else 'N/A' }}</td>
+                <td>{{ assignment[0] }}</td> <!-- name -->
+                <td>{{ assignment[2] }}</td> <!-- due_date -->
+                <td>{{ assignment[3] if assignment[3] is not none else 'N/A' }}</td> <!-- score -->
+                <td>{{ 'Completed' if assignment[4] else 'Pending' }}</td> <!-- passed -->
+                <td><a href="{{ url_for('launch_course', filepath=assignment[1]) }}">Launch</a></td> <!-- filepath -->
             </tr>
         {% endfor %}
     </table>
