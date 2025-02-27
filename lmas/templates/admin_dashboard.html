@@ -17,9 +17,10 @@
     </form>
 
     <h2>Add Course</h2>
+    <p>Upload SCORM content as a .zip file.</p>
     <form method="POST" enctype="multipart/form-data">
         <input type="text" name="course_name" placeholder="Course Name" required>
-        <input type="file" name="course_file" accept=".elp" required>
+        <input type="file" name="course_file" accept=".zip" required>
         <button type="submit" name="add_course">Upload Course</button>
     </form>
 
