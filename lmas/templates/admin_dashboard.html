@@ -4,9 +4,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
-    ## RevStart -- Added logout link
     <a href="{{ url_for('logout') }}">Logout</a>
-    ## RevEnd
     <h1>Admin Dashboard</h1>
 
     <h2>Add User</h2>
@@ -17,7 +15,6 @@
     </form>
 
     <h2>Add Course</h2>
-    <p>Upload SCORM content as a .zip file.</p>
     <form method="POST" enctype="multipart/form-data">
         <input type="text" name="course_name" placeholder="Course Name" required>
         <input type="file" name="course_file" accept=".zip" required>
@@ -42,13 +39,17 @@
 
     <h2>Progress</h2>
     <table>
-        <tr><th>Course</th><th>Due Date</th><th>Score</th><th>Passed</th></tr>
-        {% for assignment in assignments %}
+        <tr><th>Course</th><th>Attempt ID</th><th>Correct</th><th>Incorrect</th><th>Score</th><th>Passed</th><th>Start Time</th><th>End Time</th></tr>
+        {% for attempt in attempts %}
             <tr>
-                <td>{{ assignment[0] }}</td>
-                <td>{{ assignment[2] }}</td>
-                <td>{{ assignment[3] if assignment[3] else 'N/A' }}</td>
-                <td>{{ 'Yes' if assignment[4] else 'No' }}</td>
+                <td>{{ attempt[2] }}</td> <!-- course_id -->
+                <td>{{ attempt[0] }}</td> <!-- attempt_id -->
+                <td>{{ attempt[3] }}</td> <!-- correct_responses -->
+                <td>{{ attempt[4] }}</td> <!-- incorrect_responses -->
+                <td>{{ attempt[8] }}</td> <!-- score -->
+                <td>{{ 'Yes' if attempt[5] else 'No' }}</td> <!-- passed -->
+                <td>{{ attempt[6] }}</td> <!-- start_time -->
+                <td>{{ attempt[7] }}</td> <!-- end_time -->
             </tr>
         {% endfor %}
     </table>

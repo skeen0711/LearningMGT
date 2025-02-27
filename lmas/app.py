@@ -99,22 +99,20 @@ def serve_content(filepath, filename):
                 pipwerks.SCORM.API.handle = window.API;  // Force API handle
                 pipwerks.SCORM.API.isFound = true;  // Mark as found
                 console.log("API handle set:", pipwerks.SCORM.API.handle);
-                // Force initialization immediately
                 console.log("Forcing SCORM init");
                 pipwerks.SCORM.init();
-                // Override calcScore2 to ensure SCORM calls
                 var originalCalcScore2 = window.calcScore2 || function() {};
                 window.calcScore2 = function() {
                     console.log("calcScore2 called, computing score");
                     originalCalcScore2();
-                    var score = window.actualScore;  // Access global actualScore
+                    var score = window.actualScore;
                     console.log("Setting score:", score);
-                    pipwerks.SCORM.set("cmi.core.score.raw", score);  // Use SCORM 1.2 element
+                    pipwerks.SCORM.set("cmi.core.score.raw", score);
                     pipwerks.SCORM.set("cmi.core.lesson_status", score >= 90 ? "completed" : "incomplete");
                     setTimeout(function() {
                         console.log("Triggering LMSFinish after score set");
                         pipwerks.SCORM.quit();
-                    }, 500);  // Delay to ensure data is sent
+                    }, 1000);  // Increased delay for stability
                 };
             </script>
         '''
@@ -128,7 +126,6 @@ def serve_content(filepath, filename):
     return send_from_directory(os.path.join(CONTENT_DIR, filepath), filename)
 
 
-## RevStart -- Robust SCORM API with initialization fix
 @app.route('/scorm_api', methods=['POST'])
 def scorm_api():
     if 'user_id' not in session or 'current_course' not in session:
@@ -141,40 +138,53 @@ def scorm_api():
     key = data.get('key')
     value = data.get('value')
 
-    # Initialize scorm_data if not present
-    if 'scorm_data' not in session:
-        session['scorm_data'] = {}
+    # Ensure scorm_data exists and has interactions sub-dictionary
+    if 'scorm_data' not in session or not isinstance(session['scorm_data'], dict):
+        session['scorm_data'] = {'interactions': {}}
+    if 'interactions' not in session['scorm_data']:
+        session['scorm_data']['interactions'] = {}
 
     if command == 'LMSInitialize':
-        session['scorm_data'] = {'start_time': datetime.now().isoformat()}
+        session['scorm_data'] = {'start_time': datetime.now().isoformat(), 'interactions': {}}
         return jsonify({"success": True})
     elif command == 'LMSSetValue':
-        session['scorm_data'][key] = value
+        if key.startswith('cmi.interactions'):
+            session['scorm_data']['interactions'][key] = value
+        else:
+            session['scorm_data'][key] = value
+        session.modified = True  # Ensure session persists
         return jsonify({"success": True})
     elif command == 'LMSFinish':
         scorm_data = session.get('scorm_data', {})
         course_filepath = session['current_course']
         course = next((a for a in database.get_assignments(session['user_id']) if a[1] == course_filepath), None)
-        if course and 'cmi.core.score.raw' in scorm_data:
+        if course:
+            score = float(scorm_data.get('cmi.core.score.raw', 0))
+            status = scorm_data.get('cmi.core.lesson_status', 'incomplete')
+            passed = 1 if status in ['completed', 'passed'] else 0
+            interactions = scorm_data.get('interactions', {})
+            correct_responses = sum(1 for k, v in interactions.items() if k.endswith('.result') and v == 'correct')
+            incorrect_responses = sum(1 for k, v in interactions.items() if k.endswith('.result') and v == 'wrong')
+
             print(
-                f"Saving progress: user={session['user_id']}, course={course_filepath}, score={scorm_data['cmi.core.score.raw']}, status={scorm_data.get('cmi.core.lesson_status', 'incomplete')}")
-            database.save_progress(
+                f"Saving attempt: user={session['user_id']}, course={course_filepath}, score={score}, status={status}, correct={correct_responses}, incorrect={incorrect_responses}")
+            database.save_attempt(
                 session['user_id'],
                 course_filepath,
+                correct_responses,
+                incorrect_responses,
+                passed,
                 scorm_data.get('start_time', datetime.now().isoformat()),
                 datetime.now().isoformat(),
-                float(scorm_data.get('cmi.core.score.raw', 0)),
-                1 if scorm_data.get('cmi.core.lesson_status', 'incomplete') in ['completed', 'passed'] else 0
+                score
             )
         else:
-            print(f"Progress not saved: course={course}, score_data={scorm_data.get('cmi.core.score.raw', 'missing')}")
+            print(f"Attempt not saved: course={course}")
         session.pop('current_course', None)
         session.pop('scorm_data', None)
         return jsonify({"success": True})
     return jsonify({"error": "Invalid command"}), 400
 
-
-## RevEnd
 
 @app.route('/nevow_liveOutput', methods=['GET', 'POST'])
 def nevow_live_output():
@@ -234,7 +244,14 @@ def admin_dashboard():
     users = database.get_all_users()
     courses = database.get_all_courses()
     assignments = database.get_assignments(session['user_id'])
-    return render_template('admin_dashboard.html', users=users, courses=courses, assignments=assignments)
+    # Fetch attempts for all users
+    all_attempts = []
+    for user in users:
+        user_attempts = database.get_attempts(user[0])
+        for attempt in user_attempts:
+            all_attempts.append(attempt)
+    return render_template('admin_dashboard.html', users=users, courses=courses, assignments=assignments,
+                           attempts=all_attempts)
 
 
 if __name__ == '__main__':
