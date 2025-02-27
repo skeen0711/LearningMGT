@@ -89,17 +89,30 @@ def serve_content(filepath, filename):
     if filename.endswith('.html'):
         with open(os.path.join(CONTENT_DIR, filepath, filename), 'r') as f:
             content = f.read()
-        # Use synchronous script tag at top of body
-        script_tag = '<script src="/static/scorm_api.js" defer></script>'
+        script_tag = '''
+            <script src="/static/scorm_api.js"></script>
+            <script>
+                console.log("Injecting SCORM overrides");
+                pipwerks.SCORM.version = "1.2";  // Force SCORM 1.2
+                pipwerks.debug.isActive = true;  // Enable debug
+                pipwerks.SCORM.API.handle = window.API;  // Force API handle
+                pipwerks.SCORM.API.isFound = true;  // Mark as found
+                console.log("API handle set:", pipwerks.SCORM.API.handle);
+                // Ensure initialization on load
+                window.onload = function() {
+                    console.log("Window loaded, forcing SCORM init");
+                    pipwerks.SCORM.init();
+                };
+            </script>
+        '''
         if '<body' in content:
             body_start = content.index('<body') + content[content.index('<body'):].index('>') + 1
             content = content[:body_start] + script_tag + content[body_start:]
         else:
             content = script_tag + content
-        print(f"Serving {filename} with scorm_api.js injected")  # Debug
+        print(f"Serving {filename} with scorm_api.js and overrides injected")
         return content, 200, {'Content-Type': 'text/html'}
     return send_from_directory(os.path.join(CONTENT_DIR, filepath), filename)
-
 
 @app.route('/scorm_api', methods=['POST'])
 def scorm_api():
