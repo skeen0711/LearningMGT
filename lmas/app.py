@@ -82,6 +82,7 @@ def launch_course(filepath):
         return redirect(url_for('serve_content', filepath=filepath.replace('.zip', ''), filename=entry_point))
     return "Course entry point not found", 404
 
+
 @app.route('/content/<path:filepath>/<filename>')
 def serve_content(filepath, filename):
     if 'user_id' not in session:
@@ -98,10 +99,22 @@ def serve_content(filepath, filename):
                 pipwerks.SCORM.API.handle = window.API;  // Force API handle
                 pipwerks.SCORM.API.isFound = true;  // Mark as found
                 console.log("API handle set:", pipwerks.SCORM.API.handle);
-                // Ensure initialization on load
-                window.onload = function() {
-                    console.log("Window loaded, forcing SCORM init");
-                    pipwerks.SCORM.init();
+                // Force initialization immediately
+                console.log("Forcing SCORM init");
+                pipwerks.SCORM.init();
+                // Override calcScore2 to ensure SCORM calls
+                var originalCalcScore2 = window.calcScore2 || function() {};
+                window.calcScore2 = function() {
+                    console.log("calcScore2 called, computing score");
+                    originalCalcScore2();
+                    var score = window.actualScore;  // Access global actualScore
+                    console.log("Setting score:", score);
+                    pipwerks.SCORM.set("cmi.core.score.raw", score);  // Use SCORM 1.2 element
+                    pipwerks.SCORM.set("cmi.core.lesson_status", score >= 90 ? "completed" : "incomplete");
+                    setTimeout(function() {
+                        console.log("Triggering LMSFinish after score set");
+                        pipwerks.SCORM.quit();
+                    }, 500);  // Delay to ensure data is sent
                 };
             </script>
         '''
@@ -114,17 +127,23 @@ def serve_content(filepath, filename):
         return content, 200, {'Content-Type': 'text/html'}
     return send_from_directory(os.path.join(CONTENT_DIR, filepath), filename)
 
+
+## RevStart -- Robust SCORM API with initialization fix
 @app.route('/scorm_api', methods=['POST'])
 def scorm_api():
     if 'user_id' not in session or 'current_course' not in session:
-        print("SCORM API: Unauthorized access attempt")  # Debug
+        print("SCORM API: Unauthorized access attempt")
         return jsonify({"error": "Unauthorized"}), 401
 
     data = request.get_json()
-    print(f"SCORM API call: {data}")  # Debug
+    print(f"SCORM API call: {data}")
     command = data.get('command')
     key = data.get('key')
     value = data.get('value')
+
+    # Initialize scorm_data if not present
+    if 'scorm_data' not in session:
+        session['scorm_data'] = {}
 
     if command == 'LMSInitialize':
         session['scorm_data'] = {'start_time': datetime.now().isoformat()}
@@ -138,7 +157,7 @@ def scorm_api():
         course = next((a for a in database.get_assignments(session['user_id']) if a[1] == course_filepath), None)
         if course and 'cmi.core.score.raw' in scorm_data:
             print(
-                f"Saving progress: user={session['user_id']}, course={course_filepath}, score={scorm_data['cmi.core.score.raw']}, status={scorm_data.get('cmi.core.lesson_status', 'incomplete')}")  # Debug
+                f"Saving progress: user={session['user_id']}, course={course_filepath}, score={scorm_data['cmi.core.score.raw']}, status={scorm_data.get('cmi.core.lesson_status', 'incomplete')}")
             database.save_progress(
                 session['user_id'],
                 course_filepath,
@@ -148,29 +167,30 @@ def scorm_api():
                 1 if scorm_data.get('cmi.core.lesson_status', 'incomplete') in ['completed', 'passed'] else 0
             )
         else:
-            print(
-                f"Progress not saved: course={course}, score_data={scorm_data.get('cmi.core.score.raw', 'missing')}")  # Debug
+            print(f"Progress not saved: course={course}, score_data={scorm_data.get('cmi.core.score.raw', 'missing')}")
         session.pop('current_course', None)
         session.pop('scorm_data', None)
         return jsonify({"success": True})
     return jsonify({"error": "Invalid command"}), 400
 
 
+## RevEnd
+
 @app.route('/nevow_liveOutput', methods=['GET', 'POST'])
 def nevow_live_output():
-    print("Nevow liveOutput called")  # Debug
+    print("Nevow liveOutput called")
     return jsonify({"status": "ok"}), 200
 
 
 @app.route('/nevow_liveInput', methods=['GET', 'POST'])
 def nevow_live_input():
-    print("Nevow liveInput called")  # Debug
+    print("Nevow liveInput called")
     return jsonify({"status": "ok"}), 200
 
 
 @app.route('/authoring', methods=['GET', 'POST'])
 def authoring():
-    print("Authoring called")  # Debug
+    print("Authoring called")
     return jsonify({"status": "ok"}), 200
 
 
@@ -180,36 +200,36 @@ def admin_dashboard():
         return redirect(url_for('login'))
 
     if request.method == 'POST':
-        print("POST request received at /admin_dashboard")  # Debug
+        print("POST request received at /admin_dashboard")
         if 'add_user' in request.form:
             username = request.form['username']
             password = bcrypt.hashpw(request.form['password'].encode('utf-8'), bcrypt.gensalt())
             database.add_user(username, password.decode('utf-8'), is_admin=0)
-            print(f"User added: {username}")  # Debug
+            print(f"User added: {username}")
         elif 'add_course' in request.form:
             name = request.form.get('course_name', '')
-            print(f"Course name: {name}")  # Debug
+            print(f"Course name: {name}")
             if 'course_file' in request.files:
                 file = request.files['course_file']
-                print(f"File received: {file.filename}")  # Debug
+                print(f"File received: {file.filename}")
                 if file and file.filename:
                     if file.filename.lower().endswith('.zip'):
                         filepath = os.path.join(COURSE_DIR, file.filename)
                         file.save(filepath)
                         database.add_course(name, file.filename)
-                        print(f"Course saved: {filepath}")  # Debug
+                        print(f"Course saved: {filepath}")
                     else:
-                        print(f"Invalid file type: {file.filename}, must be .zip")  # Debug
+                        print(f"Invalid file type: {file.filename}, must be .zip")
                 else:
-                    print("No file uploaded or empty filename")  # Debug
+                    print("No file uploaded or empty filename")
             else:
-                print("No course_file in request.files")  # Debug
+                print("No course_file in request.files")
         elif 'assign_course' in request.form:
             user_id = request.form['user_id']
             course_id = request.form['course_id']
             due_date = request.form['due_date']
             database.assign_course(user_id, course_id, due_date)
-            print(f"Course assigned: user_id={user_id}, course_id={course_id}, due_date={due_date}")  # Debug
+            print(f"Course assigned: user_id={user_id}, course_id={course_id}, due_date={due_date}")
 
     users = database.get_all_users()
     courses = database.get_all_courses()
