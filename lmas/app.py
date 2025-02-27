@@ -66,7 +66,6 @@ def user_dashboard():
     return render_template('user_dashboard.html', assignments=assignments)
 
 
-## RevStart -- Enhanced SCORM launch with manifest parsing
 @app.route('/launch_course/<path:filepath>')
 def launch_course(filepath):
     if 'user_id' not in session:
@@ -86,21 +85,33 @@ def launch_course(filepath):
     return "Course entry point not found", 404
 
 
-## RevEnd
-
+## RevStart -- Inject SCORM API script into HTML to ensure API availability
 @app.route('/content/<path:filepath>/<filename>')
 def serve_content(filepath, filename):
     if 'user_id' not in session:
         return redirect(url_for('login'))
+    if filename.endswith('.html'):
+        with open(os.path.join(CONTENT_DIR, filepath, filename), 'r') as f:
+            content = f.read()
+        script_tag = '<script src="/static/scorm_api.js"></script>'
+        if '<head>' in content:
+            content = content.replace('<head>', f'<head>{script_tag}')
+        else:
+            content = script_tag + content
+        return content, 200, {'Content-Type': 'text/html'}
     return send_from_directory(os.path.join(CONTENT_DIR, filepath), filename)
 
 
+## RevEnd
+
+## RevStart -- Enhanced SCORM API with debug logging
 @app.route('/scorm_api', methods=['POST'])
 def scorm_api():
     if 'user_id' not in session or 'current_course' not in session:
         return jsonify({"error": "Unauthorized"}), 401
 
     data = request.get_json()
+    print(f"SCORM API call: {data}")  # Debug logging to verify calls
     command = data.get('command')
     key = data.get('key')
     value = data.get('value')
@@ -129,6 +140,29 @@ def scorm_api():
         return jsonify({"success": True})
     return jsonify({"error": "Invalid command"}), 400
 
+
+## RevEnd
+
+## RevStart -- Stub out Nevow endpoints to silence errors
+@app.route('/nevow_liveOutput', methods=['GET', 'POST'])
+def nevow_live_output():
+    print("Nevow liveOutput called")  # Debug logging
+    return jsonify({"status": "ok"}), 200
+
+
+@app.route('/nevow_liveInput', methods=['GET', 'POST'])
+def nevow_live_input():
+    print("Nevow liveInput called")  # Debug logging
+    return jsonify({"status": "ok"}), 200
+
+
+@app.route('/authoring', methods=['GET', 'POST'])
+def authoring():
+    print("Authoring called")  # Debug logging
+    return jsonify({"status": "ok"}), 200
+
+
+## RevEnd
 
 @app.route('/admin_dashboard', methods=['GET', 'POST'])
 def admin_dashboard():
